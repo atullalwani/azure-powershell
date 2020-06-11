@@ -1,11 +1,20 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 
 namespace Microsoft.Azure.Commands.Profile.Utilities
 {
     public static class CustomAssemblyResolver
     {
+        private static IDictionary<string, Version> NetFxPreloadAssemblies =
+            new Dictionary<string, Version>(StringComparer.InvariantCultureIgnoreCase)
+            {
+                {"System.Threading.Tasks.Extensions", new Version("4.2.0.0") },
+                {"System.Runtime.CompilerServices.Unsafe", new Version("4.0.5.0") },
+                {"System.Diagnostics.DiagnosticSource", new Version("4.0.4.0") }
+            };
         public static void Initialize()
         {
             AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;
@@ -18,14 +27,17 @@ namespace Microsoft.Azure.Commands.Profile.Utilities
         {
             try
             {
+                var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+                assemblies
                 AssemblyName name = new AssemblyName(args.Name);
-                if(string.Equals(name.Name, "Azure.Core", StringComparison.OrdinalIgnoreCase)
-                    && name.Version?.Major == 1 && (name.Version?.Minor == 2 && name.Version?.Build <= 1 || 
-                    name.Version?.Minor == 1))
+                if (NetFxPreloadAssemblies.TryGetValue(args.Name, out Version version))
                 {
-                    string accountFolder = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-                    string azureCorePath = Path.Combine(accountFolder, @"PreloadAssemblies\Azure.Core.dll");
-                    return Assembly.LoadFrom(azureCorePath);
+                    if (version >= name.Version && version.Major == name.Version.Major)
+                    {
+                        string accountFolder = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                        string azureCorePath = Path.Combine(accountFolder, $"PreloadAssemblies/{args.Name}.dll");
+                        return Assembly.LoadFrom(azureCorePath);
+                    }
                 }
             }
             catch
